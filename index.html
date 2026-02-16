@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>极速赛车：职业生涯</title>
+    <style>
+        body { margin: 0; background: #222; color: white; font-family: sans-serif; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
+        canvas { background: #444; border: 4px solid #666; display: block; }
+        #ui-overlay { position: absolute; top: 10px; left: 10px; pointer-events: none; }
+        #menu, #shop, #login { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); padding: 30px; border-radius: 10px; text-align: center; width: 300px; }
+        .hidden { display: none; }
+        button { padding: 10px 20px; margin: 10px; cursor: pointer; background: #e74c3c; border: none; color: white; font-weight: bold; }
+        button:hover { background: #c0392b; }
+        .stat { margin: 5px 0; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-overlay">
+        <div id="hud">
+            玩家: <span id="display-name">-</span> | 
+            等级: <span id="display-lv">1</span> | 
+            职业: <span id="display-job">新手</span><br>
+            金币: $<span id="display-money">0</span> | 
+            得分: <span id="display-score">0</span>
+        </div>
+    </div>
+
+    <div id="login">
+        <h2>创建赛车手档案</h2>
+        <input type="text" id="name-input" placeholder="输入你的名字" maxlength="10">
+        <button onclick="saveName()">进入赛场</button>
+    </div>
+
+    <div id="menu" class="hidden">
+        <h1 id="menu-title">赛车中心</h1>
+        <button onclick="startGame()">开始比赛</button>
+        <button onclick="toggleShop(true)">赛车商店</button>
+        <p class="stat">职业进度: <span id="job-info">努力升级以晋升</span></p>
+    </div>
+
+    <div id="shop" class="hidden">
+        <h2>地下改装店</h2>
+        <p>当前金币: $<span id="shop-money">0</span></p>
+        <div id="shop-items">
+            <button onclick="buyUpgrade('speed')">升级引擎 ($500)</button>
+            <button onclick="buyUpgrade('handling')">升级轮胎 ($300)</button>
+        </div>
+        <button onclick="toggleShop(false)">返回</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 400;
+    canvas.height = 600;
+
+    // --- 游戏数据 ---
+    let gameState = {
+        name: "",
+        level: 1,
+        exp: 0,
+        money: 0,
+        score: 0,
+        job: "新手司机",
+        upgrades: { speed: 5, handling: 5 },
+        playing: false
+    };
+
+    // 职业系统定义
+    const jobs = [
+        { minLv: 1, title: "新手司机" },
+        { minLv: 5, title: "街头车手" },
+        { minLv: 10, title: "职业赛车手" },
+        { minLv: 20, title: "赛车传奇" }
+    ];
+
+    // 赛车对象
+    let car = { x: 180, y: 500, w: 40, h: 70, color: '#f1c40f' };
+    let enemies = [];
+    let frame = 0;
+
+    // --- 逻辑处理 ---
+
+    // 1. 登录与存档
+    function saveName() {
+        const name = document.getElementById('name-input').value;
+        if(name) {
+            gameState.name = name;
+            localStorage.setItem('racing_user', JSON.stringify(gameState));
+            document.getElementById('login').classList.add('hidden');
+            showMenu();
+        }
+    }
+
+    function loadData() {
+        const saved = localStorage.getItem('racing_user');
+        if(saved) {
+            gameState = JSON.parse(saved);
+            document.getElementById('login').classList.add('hidden');
+            showMenu();
+        }
+    }
+
+    function showMenu() {
+        document.getElementById('menu').classList.remove('hidden');
+        updateHUD();
+    }
+
+    // 2. 商店系统
+    function toggleShop(show) {
+        document.getElementById('menu').classList.toggle('hidden', show);
+        document.getElementById('shop').classList.toggle('hidden', !show);
+        document.getElementById('shop-money').innerText = gameState.money;
+    }
+
+    function buyUpgrade(type) {
+        let cost = type === 'speed' ? 500 : 300;
+        if(gameState.money >= cost) {
+            gameState.money -= cost;
+            gameState.upgrades[type] += 1;
+            alert("升级成功！");
+            updateHUD();
+            document.getElementById('shop-money').innerText = gameState.money;
+            localStorage.setItem('racing_user', JSON.stringify(gameState));
+        } else {
+            alert("金币不足！");
+        }
+    }
+
+    // 3. 核心游戏引擎
+    function startGame() {
+        document.getElementById('menu').classList.add('hidden');
+        gameState.playing = true;
+        gameState.score = 0;
+        enemies = [];
+        animate();
+    }
+
+    function updateHUD() {
+        // 更新职业
+        const currentJob = jobs.filter(j => gameState.level >= j.minLv).pop();
+        gameState.job = currentJob.title;
+
+        document.getElementById('display-name').innerText = gameState.name;
+        document.getElementById('display-lv').innerText = gameState.level;
+        document.getElementById('display-job').innerText = gameState.job;
+        document.getElementById('display-money').innerText = gameState.money;
+        document.getElementById('display-score').innerText = gameState.score;
+        document.getElementById('job-info').innerText = `下一衔头: ${gameState.level}/5 (示例)`;
+    }
+
+    function spawnEnemy() {
+        if(frame % 60 === 0) {
+            enemies.push({
+                x: Math.random() * (canvas.width - 40),
+                y: -100,
+                w: 40,
+                h: 70,
+                speed: 3 + (gameState.level * 0.5)
+            });
+        }
+    }
+
+    function checkCollision(rect1, rect2) {
+        return rect1.x < rect2.x + rect2.w &&
+               rect1.x + rect1.w > rect2.x &&
+               rect1.y < rect2.y + rect2.h &&
+               rect1.y + rect1.h > rect2.y;
+    }
+
+    function gameOver() {
+        gameState.playing = false;
+        // 结算：得分转金币和经验
+        const earnedMoney = Math.floor(gameState.score / 10);
+        gameState.money += earnedMoney;
+        gameState.exp += gameState.score;
+        
+        // 升级逻辑
+        if(gameState.exp > gameState.level * 1000) {
+            gameState.level++;
+            alert("恭喜升级！当前等级: " + gameState.level);
+        }
+
+        localStorage.setItem('racing_user', JSON.stringify(gameState));
+        alert(`比赛结束！得分: ${gameState.score}, 赚取金币: ${earnedMoney}`);
+        updateHUD();
+        showMenu();
+    }
+
+    function animate() {
+        if(!gameState.playing) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 绘制马路（滚动效果）
+        ctx.fillStyle = '#555';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#fff';
+        ctx.setLineDash([20, 20]);
+        ctx.beginPath();
+        ctx.moveTo(canvas.width/2, 0);
+        ctx.lineTo(canvas.width/2, canvas.height);
+        ctx.stroke();
+
+        // 绘制主角车
+        ctx.fillStyle = car.color;
+        ctx.fillRect(car.x, car.y, car.w, car.h);
+
+        // 敌人逻辑
+        spawnEnemy();
+        enemies.forEach((enemy, index) => {
+            enemy.y += enemy.speed;
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
+
+            // 碰撞检测
+            if(checkCollision(car, enemy)) {
+                gameOver();
+            }
+
+            // 得分
+            if(enemy.y > canvas.height) {
+                enemies.splice(index, 1);
+                gameState.score += 100;
+                document.getElementById('display-score').innerText = gameState.score;
+            }
+        });
+
+        frame++;
+        requestAnimationFrame(animate);
+    }
+
+    // 4. 控制监听
+    window.addEventListener('keydown', (e) => {
+        const moveSpeed = gameState.upgrades.handling;
+        if(e.key === 'ArrowLeft' && car.x > 0) car.x -= moveSpeed * 2;
+        if(e.key === 'ArrowRight' && car.x < canvas.width - car.w) car.x += moveSpeed * 2;
+    });
+
+    // 初始化加载
+    loadData();
+
+</script>
+</body>
+</html>
